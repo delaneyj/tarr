@@ -1,0 +1,15 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  GREETING: Hello, World!
+
+tasks:
+  default:
+    sources:
+      - "**/*.p8"
+      - "**/*.lua"
+    cmds:
+      - ~/Desktop/pico-8/pico8 abyss.p8 -export index.html
+    silent: true
