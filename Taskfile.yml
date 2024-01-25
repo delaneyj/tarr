@@ -11,5 +11,5 @@ tasks:
       - "**/*.p8"
       - "**/*.lua"
     cmds:
-      - ~/Desktop/pico-8/pico8 abyss.p8 -export index.html
+      - ~/Desktop/pico-8/pico8 carts/abyss.p8 -export index.html
     silent: true
