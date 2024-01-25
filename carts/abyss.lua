@@ -16,6 +16,8 @@ function _init()
     }
 
     creatures = {}
+    creatures_personnel_space = 8
+    t = 0
 
     levels = {
         {
@@ -38,8 +40,8 @@ function _init()
                 count = 10,
                 sprites = {
                     {name = "jellfish", idx = 35, w = 1, h = 2},
-                    {name = "oarfish", idx = 33, w = 2, h = 1},
-                    {name = "snake", idx = 69, w = 2, h = 1}
+                    {name = "oarfish", idx = 36, w = 2, h = 1},
+                    {name = "snake", idx = 52, w = 2, h = 1}
                 }
             }
         }, {
@@ -60,11 +62,12 @@ function _init()
     level_idx = 1
     level = levels[level_idx]
 
+    local fuel = 1000
     submarine = {
-        x = 63,
-        y = 63,
+        x = 64,
+        y = 64,
         sprite = {idx = 14, w = 4, h = 2},
-        fuel = {current = 1000, max = 1000, burn_rate = 1},
+        fuel = {current = fuel, max = fuel, burn_rate = 1},
         speed = {x = 1, y = 0.35}
     }
 
@@ -72,6 +75,7 @@ function _init()
 end
 
 function _update()
+    t = t + 1
     if screen == screen_title then
         update_title()
     elseif screen == screen_game then
@@ -107,17 +111,37 @@ function load_level(level_idx)
             r = 4 * sqrt(s.w * s.w + s.h * s.h)
         }
 
+        local attempts = 0
         local has_collision_with_creatures = true
         while has_collision_with_creatures do
             c.x = rnd_min_max(16, 120 - s.w * 8)
-            c.y = rnd_min_max(16, 96 - s.h * 8)
+            c.y = rnd_min_max(16, 108 - s.h * 8)
+
+            local expanded = {
+                x = c.x - creatures_personnel_space,
+                y = c.y - creatures_personnel_space,
+                w = c.w * 8 + creatures_personnel_space * 2,
+                h = c.h * 8 + creatures_personnel_space * 2
+            }
 
             has_collision_with_creatures = false
             for other in all(creatures) do
-                if has_collision_aabb(c, other) then
+                local other_aabb = {
+                    x = other.x,
+                    y = other.y,
+                    w = other.w * 8,
+                    h = other.h * 8
+                }
+                if has_collision_aabb(expanded, other_aabb) then
                     has_collision_with_creatures = true
                     break
                 end
+            end
+            attempts = attempts + 1
+
+            if attempts > 100 then
+                print("failed to place creature")
+                break
             end
         end
 
@@ -149,7 +173,7 @@ end
 function draw_title()
     cls(0)
     map(51, 0, 0, 0, 16, 16)
-    center_text("abyss", 4, 7)
+    center_text("the abyss", 4, 7)
     center_text("press z to start", 30, 7)
     center_text("use arrow keys to move", 40, 7)
     center_text("use x to ping", 50, 7)
@@ -177,19 +201,37 @@ function update_game()
     local sub_moved = false
     if btn(0) then
         submarine.x = submarine.x - submarine.speed.x
-        sub_moved = true
+        if submarine.x < 7 then
+            submarine.x = 7
+        else
+            sub_moved = true
+        end
     end
     if btn(1) then
         submarine.x = submarine.x + submarine.speed.x
-        sub_moved = true
+        if submarine.x > 116 then
+            submarine.x = 116
+        else
+            sub_moved = true
+        end
     end
     if btn(2) then
         submarine.y = submarine.y - submarine.speed.y
-        sub_moved = true
+        if submarine.y < 0 then
+            submarine.y = 0
+        else
+            sub_moved = true
+        end
     end
     if btn(3) then
         submarine.y = submarine.y + submarine.speed.y
-        sub_moved = true
+
+        if submarine.y > 108 then
+            submarine.y = 108
+        else
+            sub_moved = true
+        end
+
     end
 
     -- burn fuel
@@ -201,9 +243,7 @@ function update_game()
     -- toggle debug
     if btnp(4) then show_debug = not show_debug end
 
-    sonar = {x = pings.submarine_offset.x, y = pings.submarine_offset.y}
-    sonar.x = sonar.x + submarine.x
-    sonar.y = sonar.y + submarine.y
+    sonar = {x = submarine.x, y = submarine.y}
 
     -- add ping
     if btnp(5) then
@@ -225,18 +265,21 @@ function update_game()
 
         -- check for collisions
         for c in all(creatures) do
-            local seen = sent_ping.creatures[c]
-            if not seen then
-                collided = collision_circle_sprite(sent_ping, c)
-                if collided.inside then
-                    add(pings.bounced, {
-                        x = c.x,
-                        y = c.y,
-                        r = sqrt(c.w * c.w + c.h * c.h),
-                        speed = pings.speed,
-                        from = c
-                    })
-                    sent_ping.creatures[c] = true
+            if not c.found then
+
+                local seen = sent_ping.creatures[c]
+                if not seen then
+                    collided = collision_circle_sprite(sent_ping, c)
+                    if collided.inside then
+                        add(pings.bounced, {
+                            x = c.x,
+                            y = c.y,
+                            r = sqrt(c.w * c.w + c.h * c.h),
+                            speed = pings.speed,
+                            from = c
+                        })
+                        sent_ping.creatures[c] = true
+                    end
                 end
             end
         end
@@ -276,9 +319,19 @@ function update_game()
 
     if found_creatures then sfx(0) end
 
-    if submarine.fuel.current <= 0 then screen = screen_over end
+    if submarine.fuel.current <= 0 then
+        screen = screen_over
+        sfx(20)
+    end
 
-    if found_all() then level_completed = true end
+    if found_all() then
+        level_completed = true
+        if level_idx < #levels then
+            sfx(22)
+        else
+            music(1)
+        end
+    end
 end
 
 function found_all()
@@ -308,7 +361,15 @@ function draw_game()
     end
 
     -- draw submarine
-    spr(12, submarine.x, submarine.y, 4, 2)
+    local flip = false
+    local subx = submarine.x - pings.submarine_offset.x
+    local suby = submarine.y - pings.submarine_offset.y
+    if submarine.x < 64 then
+        flip = true
+        subx = subx + pings.submarine_offset.x
+    end
+    spr(12, subx, suby, 4, 2, flip)
+
     -- spr(submarine.sprite.idx, submarine.x, submarine.y, submarine.sprite.w, submarine.sprite.h)
 
     -- draw pings
@@ -338,6 +399,13 @@ function draw_game()
             center_text("press z to continue", 32, 7)
         end
     end
+
+    local tx = flr(submarine.fuel.current / 10)
+    if t % tx == 0 and not is_over then
+        local slot = fit(submarine.fuel.current, 0, submarine.fuel.max, 32, 0)
+        sfx(15, -1, slot, 1)
+    end
+
 end
 
 -- >8
@@ -377,19 +445,9 @@ function has_collision_point_rect(p, r)
     return p.x >= tlx and p.x <= brx and p.y >= tly and p.y <= bry
 end
 
-function has_collision_aabb(a, b)
-    local aw = a.w * 8
-    local ah = a.h * 8
-    local bw = b.w * 8
-    local bh = b.h * 8
-
-    if a.x + aw < b.x then return false end
-    if a.x > b.x + bw then return false end
-    if a.y + ah < b.y then return false end
-    if a.y > b.y + bh then return false end
-
-    return true
-
+function has_collision_aabb(rect1, rect2)
+    return rect1.x < rect2.x + rect2.w and rect1.x + rect1.w > rect2.x and
+               rect1.y < rect2.y + rect2.h and rect1.y + rect1.h > rect2.y
 end
 
 function fit(value, old_min, old_max, new_min, new_max)
